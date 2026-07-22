@@ -1,0 +1,992 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<title>R6S ラウンドノートビルダー</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
+
+:root{
+  --bg: #11141a;
+  --panel: #191d25;
+  --panel-2: #1f2430;
+  --border: #2a2f3b;
+  --text: #d7dbe2;
+  --text-dim: #7d8494;
+  --accent-blue: #6d90b3;
+  --w: #dda23a;
+  --l: #b5534b;
+  --w-bg: rgba(221,162,58,0.12);
+  --l-bg: rgba(181,83,75,0.12);
+}
+*{box-sizing:border-box;}
+body{
+  margin:0;
+  background:var(--bg);
+  color:var(--text);
+  font-family:'JetBrains Mono', monospace;
+  min-height:100vh;
+}
+.app{
+  display:grid;
+  grid-template-columns: 1fr 1fr;
+  gap:1px;
+  background:var(--border);
+  min-height:100vh;
+}
+@media (max-width: 900px){
+  .app{grid-template-columns:1fr;}
+}
+.col{background:var(--bg); padding:20px 22px; display:flex; flex-direction:column; gap:16px;}
+
+/* header */
+.title{
+  font-family:'Oswald',sans-serif;
+  font-weight:700;
+  letter-spacing:0.04em;
+  font-size:13px;
+  color:var(--accent-blue);
+  text-transform:uppercase;
+  border-bottom:1px solid var(--border);
+  padding-bottom:8px;
+  margin-bottom:2px;
+  display:flex;
+  justify-content:space-between;
+  align-items:baseline;
+}
+.title small{color:var(--text-dim); font-family:'JetBrains Mono',monospace; font-size:10px; letter-spacing:0; text-transform:none;}
+
+.matchmeta{
+  display:flex;
+  gap:10px;
+  flex-wrap:wrap;
+}
+.field{display:flex; flex-direction:column; gap:4px; flex:1; min-width:120px;}
+label{font-size:10px; color:var(--text-dim); text-transform:uppercase; letter-spacing:0.05em;}
+input, select{
+  background:var(--panel);
+  border:1px solid var(--border);
+  color:var(--text);
+  padding:7px 8px;
+  font-family:'JetBrains Mono',monospace;
+  font-size:13px;
+  border-radius:2px;
+  outline:none;
+}
+input:focus, select:focus{border-color:var(--accent-blue);}
+
+.phase{
+  background:var(--panel);
+  border:1px solid var(--border);
+  border-radius:3px;
+  overflow:hidden;
+}
+.phase-head{
+  display:flex; justify-content:space-between; align-items:center;
+  padding:8px 12px;
+  background:var(--panel-2);
+  font-family:'Oswald',sans-serif;
+  font-weight:600;
+  font-size:12px;
+  letter-spacing:0.06em;
+  border-bottom:1px solid var(--border);
+}
+.phase-head.atk{color:#c9d6e6;}
+.phase-head.def{color:#c9d6e6;}
+.rows{display:flex; flex-direction:column;}
+.row{
+  display:flex;
+  flex-wrap:wrap;
+  gap:6px;
+  padding:6px 10px;
+  border-bottom:1px solid var(--border);
+  align-items:center;
+}
+.row:last-child{border-bottom:none;}
+.rownum{flex:0 0 16px; color:var(--text-dim); font-size:12px; text-align:right;}
+.row input, .row select{padding:5px 6px; font-size:12.5px;}
+.row select[data-field]{flex:1 1 110px; min-width:90px;}
+.inline-new-input{border-color:var(--accent-blue) !important; flex:1 1 110px; min-width:90px;}
+.wl-toggle{
+  display:flex; border:1px solid var(--border); border-radius:2px; overflow:hidden; height:28px;
+  flex:0 0 52px;
+}
+.wl-toggle button{
+  flex:1; border:none; background:var(--panel); color:var(--text-dim);
+  font-family:'JetBrains Mono',monospace; font-weight:700; font-size:11px; cursor:pointer;
+}
+.wl-toggle button.active.w{background:var(--w-bg); color:var(--w);}
+.wl-toggle button.active.l{background:var(--l-bg); color:var(--l);}
+.del{
+  flex:0 0 18px;
+  background:none; border:none; color:var(--text-dim); cursor:pointer; font-size:15px; line-height:1;
+}
+.del:hover{color:var(--l);}
+.addrow{
+  padding:8px 10px;
+  background:none; border:none; color:var(--accent-blue);
+  font-family:'JetBrains Mono',monospace; font-size:12px; cursor:pointer; text-align:left;
+  border-top: 1px dashed var(--border);
+}
+.addrow:hover{background:var(--panel-2);}
+
+/* narrow / portrait windows (e.g. alongside a Discord screen-share) */
+@media (max-width: 560px){
+  .col{padding:12px 14px; gap:12px;}
+  .title{font-size:11px;}
+  .matchmeta{gap:6px;}
+  .field{min-width:100px;}
+  .phase-head{padding:6px 10px; font-size:11px;}
+  .row{padding:5px 8px;}
+  .strip-wrap{padding:10px 12px;}
+  .pip{width:19px; height:19px; font-size:9px;}
+  #outputText{min-height:140px;}
+  .actions{flex-wrap:wrap;}
+  button.btn{padding:7px 10px;}
+}
+
+/* strip */
+.strip-wrap{
+  background:var(--panel);
+  border:1px solid var(--border);
+  border-radius:3px;
+  padding:14px 16px;
+}
+.strip-label{font-size:10px; color:var(--text-dim); text-transform:uppercase; letter-spacing:0.05em; margin-bottom:8px;}
+.strip{display:flex; gap:4px; flex-wrap:wrap;}
+.pip{
+  width:22px; height:22px;
+  display:flex; align-items:center; justify-content:center;
+  font-size:10px; font-weight:700; border-radius:2px;
+  font-family:'JetBrains Mono',monospace;
+}
+.pip.w{background:var(--w-bg); color:var(--w); border:1px solid var(--w);}
+.pip.l{background:var(--l-bg); color:var(--l); border:1px solid var(--l);}
+.pip.empty{border:1px dashed var(--border); color:var(--text-dim);}
+.score{
+  margin-left:auto; font-family:'Oswald',sans-serif; font-weight:700; font-size:16px; letter-spacing:0.03em;
+}
+.score .w{color:var(--w);}
+.score .l{color:var(--l);}
+
+/* output */
+.output-box{
+  background:var(--panel);
+  border:1px solid var(--border);
+  border-radius:3px;
+  padding:14px 16px;
+  flex:1;
+  display:flex; flex-direction:column;
+  min-height:220px;
+}
+#outputText{
+  white-space:pre-wrap;
+  font-family:'JetBrains Mono',monospace;
+  font-size:13px;
+  line-height:1.7;
+  margin:0;
+  flex:1;
+  color:var(--text);
+  background:none;
+  border:none;
+  outline:none;
+  resize:vertical;
+  min-height:200px;
+}
+#outputText:focus{outline:1px solid var(--accent-blue);}
+.actions{display:flex; gap:8px; margin-top:12px;}
+button.btn{
+  background:var(--panel-2);
+  border:1px solid var(--border);
+  color:var(--text);
+  padding:8px 14px;
+  font-family:'JetBrains Mono',monospace;
+  font-size:12px;
+  border-radius:2px;
+  cursor:pointer;
+}
+button.btn:hover{border-color:var(--accent-blue); color:var(--accent-blue);}
+button.btn.primary{border-color:var(--accent-blue); color:var(--accent-blue);}
+
+/* saved matches */
+.saved-list{display:flex; flex-direction:column; gap:6px; max-height:160px; overflow-y:auto;}
+.saved-item{
+  display:flex; justify-content:space-between; align-items:center;
+  padding:7px 10px; background:var(--panel); border:1px solid var(--border); border-radius:2px; font-size:12px;
+}
+.saved-item .info{color:var(--text-dim);}
+.saved-item .name{color:var(--text); font-weight:600;}
+.saved-item .load-actions button{
+  background:none; border:none; color:var(--accent-blue); cursor:pointer; font-size:11px; margin-left:8px;
+}
+.saved-item .load-actions button.del-saved{color:var(--l);}
+.empty-note{color:var(--text-dim); font-size:12px; padding:6px 2px;}
+
+/* candidate chips */
+.candidate-group{margin-bottom:10px;}
+.candidate-head{font-size:11px; color:var(--text-dim); margin-bottom:6px; display:flex; justify-content:space-between;}
+.candidate-head .mapname{color:var(--accent-blue);}
+.chip-list{display:flex; flex-wrap:wrap; gap:6px; min-height:20px;}
+.chip{
+  display:flex; align-items:center; gap:6px;
+  background:var(--panel); border:1px solid var(--border); border-radius:2px;
+  padding:4px 6px; font-size:12px;
+}
+.chip span.chip-text{cursor:text; padding:1px 2px;}
+.chip input.chip-edit{
+  border:none; background:none; padding:0; font-size:12px; color:var(--text);
+  width:90px; outline:none; border-bottom:1px dashed var(--accent-blue);
+}
+.chip button{background:none; border:none; color:var(--text-dim); cursor:pointer; font-size:12px; padding:0;}
+.chip button:hover{color:var(--l);}
+.chip-add{display:flex; gap:6px; margin-top:6px;}
+.chip-add input{flex:1; font-size:12px; padding:5px 6px;}
+.chip-add button{font-size:11px; padding:5px 10px;}
+
+::-webkit-scrollbar{width:8px;}
+::-webkit-scrollbar-thumb{background:var(--border); border-radius:4px;}
+</style>
+</head>
+<body>
+<div class="app">
+
+  <!-- LEFT: builder -->
+  <div class="col">
+    <div class="title">ラウンドノートビルダー <small id="statusText">未保存</small></div>
+
+    <div class="matchmeta">
+      <div class="field">
+        <label>マップ</label>
+        <select id="mapSelect">
+          <option>銀行</option>
+          <option>国境</option>
+          <option>山荘</option>
+          <option>クラブハウス</option>
+          <option>海岸線</option>
+          <option>領事館</option>
+          <option>カフェ・ドストエフスキー</option>
+          <option>アジト</option>
+          <option>ナイトヘイヴンラボ</option>
+          <option>オレゴン</option>
+          <option>高層ビル</option>
+          <option>ヴィラ</option>
+          <option>民家</option>
+          <option>要塞</option>
+          <option>その他</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>対戦相手</label>
+        <input id="opponent" placeholder="例: BNK FEARX">
+      </div>
+    </div>
+
+    <div class="phase" id="atkPhase">
+      <div class="phase-head atk">攻撃</div>
+      <div class="rows" id="atkRows"></div>
+      <button class="addrow" data-phase="atk">+ ラウンド追加</button>
+    </div>
+
+    <div class="phase" id="defPhase">
+      <div class="phase-head def">防衛</div>
+      <div class="rows" id="defRows"></div>
+      <button class="addrow" data-phase="def">+ ラウンド追加</button>
+    </div>
+
+    <div class="title" style="margin-top:6px;">保存済みマッチ</div>
+    <div class="saved-list" id="savedList"><div class="empty-note">保存済みなし</div></div>
+    <div class="actions">
+      <button class="btn primary" id="saveBtn">保存</button>
+      <button class="btn" id="newBtn">新規</button>
+    </div>
+
+    <div class="title" style="margin-top:6px; cursor:pointer;" id="candidateToggle">
+      <span>候補の管理</span>
+      <small id="candidateToggleIcon">▲ 隠す</small>
+    </div>
+
+    <div id="candidateBody">
+      <div class="candidate-group">
+        <div class="candidate-head"><span>サイト候補 (<span class="mapname" id="candSiteMapLabel"></span>)</span></div>
+        <div class="chip-list" id="siteChipList"></div>
+        <div class="chip-add">
+          <input id="siteChipInput" placeholder="新しいサイト名を追加">
+          <button class="btn" id="siteChipAdd">追加</button>
+        </div>
+      </div>
+
+      <div class="candidate-group">
+        <div class="candidate-head"><span>作戦名候補 (<span class="mapname" id="candPlayPhaseLabel"></span> / <span class="mapname" id="candPlaySiteLabel"></span>)</span></div>
+        <div style="display:flex; gap:6px; margin-bottom:8px;">
+          <select id="playCandidatePhaseSelect" style="flex:1;">
+            <option value="atk">攻撃</option>
+            <option value="def">防衛</option>
+          </select>
+          <select id="playCandidateSiteSelect" style="flex:1;"></select>
+        </div>
+        <div class="chip-list" id="playChipList"></div>
+        <div class="chip-add">
+          <input id="playChipInput" placeholder="新しい作戦名を追加">
+          <button class="btn" id="playChipAdd">追加</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- RIGHT: preview -->
+  <div class="col">
+    <div class="title">プレビュー</div>
+
+    <div class="strip-wrap">
+      <div class="strip-label">攻撃</div>
+      <div class="strip" id="atkStrip"></div>
+    </div>
+    <div class="strip-wrap">
+      <div class="strip-label">防衛</div>
+      <div class="strip" id="defStrip"></div>
+      <div style="display:flex; margin-top:10px;">
+        <div class="score" id="scoreLine"></div>
+      </div>
+    </div>
+
+    <div class="output-box">
+      <textarea id="outputText" spellcheck="false"></textarea>
+      <div class="actions">
+        <button class="btn primary" id="copyBtn">コピー</button>
+        <button class="btn" id="downloadBtn">.txtで保存</button>
+        <button class="btn" id="resetOutputBtn" title="手動での編集内容を破棄して、入力内容から自動生成し直します">自動生成に戻す</button>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+// window.storage is an API provided by the Claude artifact sandbox. When this file runs
+// standalone (double-clicked, opened in a plain browser, or packaged into a desktop app),
+// that API doesn't exist — so we polyfill it with localStorage using the same shape/interface.
+if(!window.storage){
+  window.storage = {
+    async get(key, shared){
+      const raw = localStorage.getItem('r6ls:' + key);
+      if(raw === null) return null;
+      return { key, value: raw, shared: !!shared };
+    },
+    async set(key, value, shared){
+      localStorage.setItem('r6ls:' + key, value);
+      return { key, value, shared: !!shared };
+    },
+    async delete(key, shared){
+      const existed = localStorage.getItem('r6ls:' + key) !== null;
+      localStorage.removeItem('r6ls:' + key);
+      return { key, deleted: existed, shared: !!shared };
+    },
+    async list(prefix, shared){
+      const keys = [];
+      for(let i = 0; i < localStorage.length; i++){
+        const k = localStorage.key(i);
+        if(k && k.startsWith('r6ls:')){
+          const stripped = k.slice(5);
+          if(!prefix || stripped.startsWith(prefix)) keys.push(stripped);
+        }
+      }
+      return { keys, prefix, shared: !!shared };
+    }
+  };
+}
+
+let state = {
+  map: '銀行',
+  opponent: '',
+  atk: [],
+  def: [],
+  savedId: null,
+  outputOverride: null
+};
+
+function newRow(){ return { site: '', play: '', result: 'L' }; }
+
+function ensureMinRows(){
+  if(state.atk.length === 0) state.atk.push(newRow());
+  if(state.def.length === 0) state.def.push(newRow());
+}
+ensureMinRows();
+
+function buildOptionsHtml(list, current, allowNew){
+  const opts = list.slice();
+  if(current && !opts.includes(current)) opts.unshift(current); // preserve legacy custom values already in use
+  let html = `<option value="">(選択)</option>`;
+  if(allowNew) html += `<option value="__new__">＋ 新しい値を入力...</option>`;
+  html += opts.map(o => `<option value="${escapeAttr(o)}"${o===current?' selected':''}>${escapeHtml(o)}</option>`).join('');
+  return html;
+}
+
+function fieldToType(field){
+  if(field === 'site') return 'sites';
+  return 'plays';
+}
+
+function playKey(phase, site){
+  return phase + '::' + (site || '');
+}
+
+function swapToInlineInput(select, phase, idx, field){
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.className = 'inline-new-input';
+  input.placeholder = '新しい値を入力してEnter';
+  select.replaceWith(input);
+  input.focus();
+  let done = false;
+  const commit = () => {
+    if(done) return;
+    done = true;
+    const val = input.value.trim();
+    if(val){
+      state[phase][idx][field] = val;
+      const ctx = field === 'play' ? playKey(phase, state[phase][idx].site) : undefined;
+      registerCustomValue(fieldToType(field), val, ctx);
+    }
+    renderRows(phase);
+    renderPreview();
+  };
+  input.addEventListener('blur', commit);
+  input.addEventListener('keydown', e => {
+    if(e.key === 'Enter') input.blur();
+    if(e.key === 'Escape'){ done = true; renderRows(phase); }
+  });
+}
+
+function renderRows(phase){
+  const container = document.getElementById(phase === 'atk' ? 'atkRows' : 'defRows');
+  const list = state[phase];
+  container.innerHTML = '';
+  list.forEach((r, i) => {
+    const row = document.createElement('div');
+    row.className = 'row';
+    row.innerHTML = `
+      <div class="rownum">${i+1}</div>
+      <select data-idx="${i}" data-field="site" data-phase="${phase}">${buildOptionsHtml(getList('sites'), r.site, true)}</select>
+      <select data-idx="${i}" data-field="play" data-phase="${phase}">${buildOptionsHtml(getList('plays', playKey(phase, r.site)), r.play, true)}</select>
+      <div class="wl-toggle">
+        <button class="${r.result==='W'?'active w':''}" data-idx="${i}" data-phase="${phase}" data-result="W">W</button>
+        <button class="${r.result==='L'?'active l':''}" data-idx="${i}" data-phase="${phase}" data-result="L">L</button>
+      </div>
+      <button class="del" data-idx="${i}" data-phase="${phase}" title="削除">×</button>
+    `;
+    container.appendChild(row);
+  });
+
+  container.querySelectorAll('select').forEach(sel => {
+    sel.addEventListener('change', async e => {
+      const idx = +e.target.dataset.idx, field = e.target.dataset.field, ph = e.target.dataset.phase;
+      if(e.target.value === '__new__'){
+        swapToInlineInput(e.target, ph, idx, field);
+        return;
+      }
+      state[ph][idx][field] = e.target.value;
+      if(field === 'site'){
+        state[ph][idx].play = ''; // site changed, previous play choice no longer applies
+        await ensurePlaysLoaded(playKey(ph, e.target.value));
+        renderRows(ph);
+      }
+      renderPreview();
+    });
+  });
+  container.querySelectorAll('.wl-toggle button').forEach(btn => {
+    btn.addEventListener('click', e => {
+      const idx = +e.target.dataset.idx, ph = e.target.dataset.phase, res = e.target.dataset.result;
+      state[ph][idx].result = res;
+      renderRows(ph);
+      renderPreview();
+    });
+  });
+  container.querySelectorAll('.del').forEach(btn => {
+    btn.addEventListener('click', e => {
+      const idx = +e.target.dataset.idx, ph = e.target.dataset.phase;
+      state[ph].splice(idx, 1);
+      renderRows(ph);
+      renderPreview();
+    });
+  });
+}
+
+function escapeAttr(s){
+  return (s || '').replace(/"/g,'&quot;');
+}
+
+document.querySelectorAll('.addrow').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const ph = btn.dataset.phase;
+    state[ph].push(newRow());
+    renderRows(ph);
+    renderPreview();
+  });
+});
+
+document.getElementById('mapSelect').addEventListener('change', async e => {
+  state.map = e.target.value;
+  await loadSitesForMap(state.map);
+  renderPlayCandidateSiteOptions();
+  renderPreview();
+});
+document.getElementById('opponent').addEventListener('input', e => { state.opponent = e.target.value; renderPreview(); });
+
+
+function buildOutput(){
+  const headerParts = [];
+  headerParts.push(state.map);
+  if(state.opponent) headerParts.push('vs ' + state.opponent);
+  let out = headerParts.join(' ') + '\n';
+
+  const formatRound = (i, r) => {
+    const content = r.play ? `${r.site} ${r.play}`.trim() : r.site;
+    return `${i+1}.${content} ${r.result}\n`;
+  };
+
+  out += '攻撃\n';
+  state.atk.forEach((r,i) => { out += formatRound(i, r); });
+  out += '防衛\n';
+  state.def.forEach((r,i) => { out += formatRound(i, r); });
+  return out.trim();
+}
+
+function renderStrip(phase){
+  const el = document.getElementById(phase === 'atk' ? 'atkStrip' : 'defStrip');
+  el.innerHTML = '';
+  state[phase].forEach(r => {
+    const pip = document.createElement('div');
+    pip.className = 'pip ' + (r.result === 'W' ? 'w' : 'l');
+    pip.textContent = r.result;
+    el.appendChild(pip);
+  });
+}
+
+function renderPreview(){
+  renderStrip('atk');
+  renderStrip('def');
+  const atkW = state.atk.filter(r => r.result==='W').length;
+  const defW = state.def.filter(r => r.result==='W').length;
+  const totalW = atkW + defW, totalL = state.atk.length + state.def.length - totalW;
+  document.getElementById('scoreLine').innerHTML = `<span class="w">${totalW}W</span> - <span class="l">${totalL}L</span>`;
+  document.getElementById('outputText').value = (state.outputOverride !== null && state.outputOverride !== undefined) ? state.outputOverride : buildOutput();
+  scheduleDraftAutoSave();
+}
+
+let draftSaveTimer = null;
+function scheduleDraftAutoSave(){
+  if(draftSaveTimer) clearTimeout(draftSaveTimer);
+  draftSaveTimer = setTimeout(async () => {
+    try{
+      const draft = {
+        map: state.map, opponent: state.opponent,
+        atk: state.atk, def: state.def, savedId: state.savedId,
+        outputOverride: state.outputOverride
+      };
+      await window.storage.set('r6notes:currentDraft', JSON.stringify(draft));
+    }catch(e){}
+  }, 500);
+}
+
+async function loadDraft(){
+  try{
+    const r = await window.storage.get('r6notes:currentDraft');
+    return r ? JSON.parse(r.value) : null;
+  }catch(e){ return null; }
+}
+
+document.getElementById('outputText').addEventListener('input', e => {
+  state.outputOverride = e.target.value;
+  scheduleDraftAutoSave();
+});
+
+document.getElementById('resetOutputBtn').addEventListener('click', () => {
+  state.outputOverride = null;
+  renderPreview();
+  flashStatus('自動生成に戻しました');
+});
+
+document.getElementById('copyBtn').addEventListener('click', async () => {
+  try{
+    await navigator.clipboard.writeText(document.getElementById('outputText').value);
+    flashStatus('コピーしました');
+  }catch(e){ flashStatus('コピー失敗'); }
+});
+
+document.getElementById('downloadBtn').addEventListener('click', () => {
+  const blob = new Blob([document.getElementById('outputText').value], {type:'text/plain'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  const fname = (state.map || 'match') + '.txt';
+  a.href = url; a.download = fname;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+});
+
+function flashStatus(msg){
+  const el = document.getElementById('statusText');
+  const prev = el.textContent;
+  el.textContent = msg;
+  setTimeout(() => { el.textContent = prev; }, 1500);
+}
+
+// ---- custom autocomplete values (site per map / play name per site) ----
+// Room-name pairs prefixed with their floor, in the terminology used by Japanese-language R6S
+// community map guides (based on in-game room labels). Map names themselves are now the official
+// JP localizations confirmed directly from Ubisoft's Japanese site (銀行, 国境, 山荘, 海岸線,
+// 領事館, カフェ・ドストエフスキー, アジト, ナイトヘイヴンラボ, 高層ビル, 民家 — Clubhouse/
+// Oregon/Villa keep their katakana names officially too).
+// 銀行/国境/クラブハウス/海岸線/オレゴン/民家 site names are cross-checked against a dedicated
+// JP map-research blog and are high confidence. 山荘/カフェ・ドストエフスキー/領事館/ヴィラ/
+// アジト/ナイトヘイヴンラボ/高層ビル could not be fully cross-checked the same way (and Kafe in
+// particular has been reworked more than once) — treat those as a reasonable starting point and
+// correct freely; anything you edit sticks around per map from then on.
+const MAP_SITE_SEEDS = {
+  '銀行': ['2F VIPラウンジ・CEOオフィス','1F スタッフルーム・空き部屋','1F 窓口オフィス・資料室','地下 ロッカー・監視室'],
+  '国境': ['2F 武器庫ロッカー・資料室','1F 税関検査・備品室','1F 換気室・作業室','1F トイレ・窓口'],
+  '山荘': ['2F マスターベッドルーム・オフィス','1F バー・遊戯室','1F キッチン・ダイニング','地下 ワインセラー・スノーモービルガレージ'],
+  'クラブハウス': ['2F ジム・ベッドルーム','2F 監視室・金庫室','1F バー・倉庫','地下 祭壇・武器保管室'],
+  '海岸線': ['2F フッカーラウンジ・ビリヤードルーム','2F ペントハウス・劇場','1F キッチン・勝手口','1F ブルーバー・サンライズバー'],
+  '領事館': ['1F オフィス・会議室','1F ロビー・会見室','地下 ガレージ・カフェテリア','2F テラーズ・アーカイブ'],
+  'カフェ・ドストエフスキー': ['2F 読書室・暖炉ホール','2F 暖炉ホール・掘削機展示室','3F バー・カクテルラウンジ','1F ベーカリー・キッチン準備室'],
+  'アジト': ['2F メインオフィス・R6ルーム','1F 宿舎・作戦会議室','地下 武器庫・武器メンテナンス','1F ラボ・ラボサポート'],
+  'ナイトヘイヴンラボ': ['2F 司令センター・サーバー','1F キッチン・カフェテリア','1F 収納庫・管制室','地下 アセンブリー・タンク'],
+  'オレゴン': ['2F 子供部屋・寮メインホール','1F キッチン・食堂','1F 会議ホール・キッチン','地下 洗濯室・備品室'],
+  '高層ビル': ['2F カラオケ・茶室','2F 展示室・オフィス','1F BBQ・キッチン','1F ベッドルーム・トイレ'],
+  'ヴィラ': ['2F 飛行展示室・娯楽室','2F 記念品室・彫像展示室','1F ダイニングルーム・キッチン','1F リビングルーム・図書室'],
+  '民家': ['2F 車の部屋・ピンクの部屋','2F メインベッドルーム・車の部屋','1F 遊戯室・音楽室','地下 ガレージ・洗濯室'],
+  '要塞': ['2F バスルーム・コマンダーのオフィス','2F 共同部屋・娯楽室','1F 待合室・カフェテリア','1F 公衆浴場・リビング']
+};
+const DEFAULT_SITES = ['地下','1F','2F','3F','ロビー','会議室','更衣室','倉庫','屋上','ガレージ','外','廊下'];
+
+// Floor-only shortcuts (2F, 1F, 地下, 3F...) derived from each map's specific site pairs above,
+// so you can quickly note "just this floor" without picking one exact site pair.
+const MAP_FLOOR_SEEDS = {};
+for(const map in MAP_SITE_SEEDS){
+  const floors = [];
+  MAP_SITE_SEEDS[map].forEach(entry => {
+    const floor = entry.split(' ')[0];
+    if(floor && !floors.includes(floor)) floors.push(floor);
+  });
+  MAP_FLOOR_SEEDS[map] = floors;
+}
+
+let customValues = { sitesByMap: {}, playsBySite: {} };
+
+async function loadCustomValues(){
+  await loadSitesForMap(state.map);
+  renderPlayCandidateSiteOptions();
+}
+
+async function loadSitesForMap(map){
+  let dirty = false;
+  if(!customValues.sitesByMap[map]){
+    try{
+      const r = await window.storage.get('r6notes:customSites:' + map);
+      if(r){
+        customValues.sitesByMap[map] = JSON.parse(r.value);
+      }else{
+        customValues.sitesByMap[map] = (MAP_SITE_SEEDS[map] || DEFAULT_SITES).slice();
+        dirty = true;
+      }
+    }catch(e){
+      customValues.sitesByMap[map] = (MAP_SITE_SEEDS[map] || DEFAULT_SITES).slice();
+      dirty = true;
+    }
+  }
+  // ensure this map's floor-only shortcuts are present, even for lists already saved/edited before
+  (MAP_FLOOR_SEEDS[map] || []).forEach(floor => {
+    if(!customValues.sitesByMap[map].includes(floor)){
+      customValues.sitesByMap[map].push(floor);
+      dirty = true;
+    }
+  });
+  if(dirty){
+    try{ await window.storage.set('r6notes:customSites:' + map, JSON.stringify(customValues.sitesByMap[map])); }catch(e){}
+  }
+  document.getElementById('candSiteMapLabel').textContent = map;
+  renderDatalist('sites');
+  renderChips('sites');
+}
+
+async function ensurePlaysLoaded(key){
+  if(!key || customValues.playsBySite[key]) return;
+  try{
+    const r = await window.storage.get('r6notes:customPlays:' + key);
+    customValues.playsBySite[key] = r ? JSON.parse(r.value) : [];
+  }catch(e){
+    customValues.playsBySite[key] = [];
+  }
+}
+
+async function ensureAllPlaysLoaded(){
+  const keys = new Set();
+  state.atk.forEach(r => { if(r.site) keys.add(playKey('atk', r.site)); });
+  state.def.forEach(r => { if(r.site) keys.add(playKey('def', r.site)); });
+  for(const k of keys) await ensurePlaysLoaded(k);
+}
+
+function getList(type, ctx){
+  if(type === 'sites') return customValues.sitesByMap[state.map] || [];
+  if(type === 'plays') return customValues.playsBySite[ctx] || [];
+  return [];
+}
+
+async function persistList(type, ctx){
+  try{
+    if(type === 'sites'){
+      await window.storage.set('r6notes:customSites:' + state.map, JSON.stringify(customValues.sitesByMap[state.map] || []));
+    }else if(type === 'plays'){
+      await window.storage.set('r6notes:customPlays:' + ctx, JSON.stringify(customValues.playsBySite[ctx] || []));
+    }
+  }catch(e){}
+}
+
+function refreshRowSelects(){
+  renderRows('atk');
+  renderRows('def');
+}
+
+function renderPlayCandidateSiteOptions(){
+  const sel = document.getElementById('playCandidateSiteSelect');
+  const sites = getList('sites');
+  const prevValue = sel.value;
+  sel.innerHTML = sites.map(s => `<option value="${escapeAttr(s)}">${escapeHtml(s)}</option>`).join('');
+  const chosen = sites.includes(prevValue) ? prevValue : (sites[0] || '');
+  sel.value = chosen;
+  onPlayCandidateContextChange();
+}
+
+async function onPlayCandidateContextChange(){
+  const phase = document.getElementById('playCandidatePhaseSelect').value;
+  const site = document.getElementById('playCandidateSiteSelect').value;
+  document.getElementById('candPlayPhaseLabel').textContent = phase === 'atk' ? '攻撃' : '防衛';
+  document.getElementById('candPlaySiteLabel').textContent = site || '(サイト未選択)';
+  const key = playKey(phase, site);
+  await ensurePlaysLoaded(key);
+  renderChips('plays', key);
+}
+
+document.getElementById('playCandidatePhaseSelect').addEventListener('change', onPlayCandidateContextChange);
+document.getElementById('playCandidateSiteSelect').addEventListener('change', onPlayCandidateContextChange);
+
+function renderDatalist(type){
+  refreshRowSelects();
+  if(type === 'sites') renderPlayCandidateSiteOptions();
+}
+
+const CHIP_LIST_IDS = { sites: 'siteChipList', plays: 'playChipList' };
+function renderChips(type, ctx){
+  const el = document.getElementById(CHIP_LIST_IDS[type]);
+  const list = getList(type, ctx);
+  if(list.length === 0){ el.innerHTML = '<div class="empty-note">候補なし</div>'; return; }
+  el.innerHTML = '';
+  list.forEach((val, i) => {
+    const chip = document.createElement('div');
+    chip.className = 'chip';
+    chip.innerHTML = `<span class="chip-text" data-type="${type}" data-idx="${i}" data-ctx="${escapeAttr(ctx||'')}">${escapeHtml(val)}</span><button data-type="${type}" data-idx="${i}" data-ctx="${escapeAttr(ctx||'')}" title="削除">×</button>`;
+    el.appendChild(chip);
+  });
+  el.querySelectorAll('.chip-text').forEach(span => {
+    span.addEventListener('click', () => startEditChip(span));
+  });
+  el.querySelectorAll('button').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const t = btn.dataset.type, idx = +btn.dataset.idx, ctx = btn.dataset.ctx || undefined;
+      getList(t, ctx).splice(idx, 1);
+      renderChips(t, ctx);
+      renderDatalist(t);
+      persistList(t, ctx);
+    });
+  });
+}
+
+function escapeHtml(s){
+  return (s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function startEditChip(span){
+  const type = span.dataset.type, idx = +span.dataset.idx, ctx = span.dataset.ctx || undefined;
+  const current = getList(type, ctx)[idx];
+  const input = document.createElement('input');
+  input.className = 'chip-edit';
+  input.value = current;
+  span.replaceWith(input);
+  input.focus();
+  input.select();
+  const commit = () => {
+    const val = input.value.trim();
+    if(val) getList(type, ctx)[idx] = val;
+    renderChips(type, ctx);
+    renderDatalist(type);
+    persistList(type, ctx);
+  };
+  input.addEventListener('blur', commit);
+  input.addEventListener('keydown', e => {
+    if(e.key === 'Enter') input.blur();
+    if(e.key === 'Escape'){ renderChips(type, ctx); }
+  });
+}
+
+async function registerCustomValue(type, value, ctx){
+  const list = getList(type, ctx);
+  if(list.includes(value)) return;
+  list.push(value);
+  renderDatalist(type);
+  if(type === 'plays'){
+    const phaseSel = document.getElementById('playCandidatePhaseSelect');
+    const siteSel = document.getElementById('playCandidateSiteSelect');
+    if(playKey(phaseSel.value, siteSel.value) === ctx) renderChips('plays', ctx);
+  }else{
+    renderChips(type, ctx);
+  }
+  persistList(type, ctx);
+}
+
+document.getElementById('siteChipAdd').addEventListener('click', () => {
+  const inp = document.getElementById('siteChipInput');
+  const val = inp.value.trim();
+  if(val){ registerCustomValue('sites', val); inp.value = ''; }
+});
+document.getElementById('playChipAdd').addEventListener('click', () => {
+  const inp = document.getElementById('playChipInput');
+  const phase = document.getElementById('playCandidatePhaseSelect').value;
+  const site = document.getElementById('playCandidateSiteSelect').value;
+  const val = inp.value.trim();
+  if(val && site){ registerCustomValue('plays', val, playKey(phase, site)); inp.value = ''; }
+});
+
+// ---- persistence ----
+async function loadSavedList(){
+  const listEl = document.getElementById('savedList');
+  try{
+    const idxRes = await window.storage.get('r6notes:index');
+    const ids = idxRes ? JSON.parse(idxRes.value) : [];
+    if(ids.length === 0){ listEl.innerHTML = '<div class="empty-note">保存済みなし</div>'; return; }
+    listEl.innerHTML = '';
+    for(const id of ids.slice().reverse()){
+      try{
+        const res = await window.storage.get('r6notes:' + id);
+        if(!res) continue;
+        const data = JSON.parse(res.value);
+        const item = document.createElement('div');
+        item.className = 'saved-item';
+        item.innerHTML = `
+          <div><span class="name">${data.map}</span> <span class="info">${data.opponent ? 'vs '+data.opponent : ''}</span></div>
+          <div class="load-actions">
+            <button data-id="${id}" class="load-saved">読込</button>
+            <button data-id="${id}" class="del-saved">削除</button>
+          </div>`;
+        listEl.appendChild(item);
+      }catch(e){}
+    }
+    listEl.querySelectorAll('.load-saved').forEach(b => b.addEventListener('click', () => loadMatch(b.dataset.id)));
+    listEl.querySelectorAll('.del-saved').forEach(b => b.addEventListener('click', () => deleteMatch(b.dataset.id)));
+  }catch(e){
+    listEl.innerHTML = '<div class="empty-note">読み込みエラー</div>';
+  }
+}
+
+async function saveMatch(){
+  const id = state.savedId || String(Date.now());
+  state.savedId = id;
+  const data = {
+    map: state.map, opponent: state.opponent,
+    atk: state.atk, def: state.def, outputOverride: state.outputOverride
+  };
+  try{
+    await window.storage.set('r6notes:' + id, JSON.stringify(data));
+    const idxRes = await window.storage.get('r6notes:index');
+    let ids = idxRes ? JSON.parse(idxRes.value) : [];
+    if(!ids.includes(id)) ids.push(id);
+    await window.storage.set('r6notes:index', JSON.stringify(ids));
+    flashStatus('保存しました');
+    loadSavedList();
+  }catch(e){ flashStatus('保存失敗'); }
+}
+
+async function loadMatch(id){
+  try{
+    const res = await window.storage.get('r6notes:' + id);
+    if(!res) return;
+    const data = JSON.parse(res.value);
+    state = { map: data.map, opponent: data.opponent, atk: data.atk, def: data.def, savedId: id, outputOverride: data.outputOverride ?? null };
+    document.getElementById('mapSelect').value = state.map;
+    document.getElementById('opponent').value = state.opponent || '';
+    ensureMinRows();
+    await loadSitesForMap(state.map);
+    await ensureAllPlaysLoaded();
+    renderPlayCandidateSiteOptions();
+    renderRows('atk'); renderRows('def'); renderPreview();
+    flashStatus('読み込みました');
+  }catch(e){ flashStatus('読み込み失敗'); }
+}
+
+async function deleteMatch(id){
+  try{
+    await window.storage.delete('r6notes:' + id);
+    const idxRes = await window.storage.get('r6notes:index');
+    let ids = idxRes ? JSON.parse(idxRes.value) : [];
+    ids = ids.filter(x => x !== id);
+    await window.storage.set('r6notes:index', JSON.stringify(ids));
+    if(state.savedId === id) state.savedId = null;
+    loadSavedList();
+  }catch(e){}
+}
+
+document.getElementById('saveBtn').addEventListener('click', saveMatch);
+document.getElementById('newBtn').addEventListener('click', async () => {
+  state = { map: '銀行', opponent: '', atk: [], def: [], savedId: null, outputOverride: null };
+  ensureMinRows();
+  document.getElementById('mapSelect').value = state.map;
+  document.getElementById('opponent').value = '';
+  await loadSitesForMap(state.map);
+  renderPlayCandidateSiteOptions();
+  renderRows('atk'); renderRows('def'); renderPreview();
+});
+
+// init
+function applyCandidateCollapsed(collapsed){
+  document.getElementById('candidateBody').style.display = collapsed ? 'none' : '';
+  document.getElementById('candidateToggleIcon').textContent = collapsed ? '▼ 表示' : '▲ 隠す';
+}
+
+document.getElementById('candidateToggle').addEventListener('click', async () => {
+  const body = document.getElementById('candidateBody');
+  const collapsed = body.style.display !== 'none';
+  applyCandidateCollapsed(collapsed);
+  try{ await window.storage.set('r6notes:uiCandidateCollapsed', JSON.stringify(collapsed)); }catch(e){}
+});
+
+async function initApp(){
+  const draft = await loadDraft();
+  if(draft){
+    state = {
+      map: draft.map || '銀行',
+      opponent: draft.opponent || '',
+      atk: (draft.atk && draft.atk.length) ? draft.atk : [],
+      def: (draft.def && draft.def.length) ? draft.def : [],
+      savedId: draft.savedId || null,
+      outputOverride: draft.outputOverride ?? null
+    };
+  }
+  ensureMinRows();
+  document.getElementById('mapSelect').value = state.map;
+  document.getElementById('opponent').value = state.opponent;
+  await loadCustomValues();
+  await ensureAllPlaysLoaded();
+  renderPlayCandidateSiteOptions();
+  renderRows('atk');
+  renderRows('def');
+  renderPreview();
+  loadSavedList();
+  try{
+    const r = await window.storage.get('r6notes:uiCandidateCollapsed');
+    applyCandidateCollapsed(r ? JSON.parse(r.value) : false);
+  }catch(e){ applyCandidateCollapsed(false); }
+  flashStatus(draft ? '前回の続きを復元しました' : '未保存');
+}
+initApp();
+</script>
+</body>
+</html>
