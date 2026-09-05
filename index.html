@@ -3,6 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <title>R6S ラウンドノートビルダー</title>
+<script src="https://accounts.google.com/gsi/client" async defer></script>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
 
@@ -279,6 +280,14 @@ button.btn.primary{border-color:var(--accent-blue); color:var(--accent-blue);}
         <label>対戦相手</label>
         <input id="opponent" placeholder="例: BNK FEARX">
       </div>
+      <div class="field" style="flex:0 0 auto; min-width:120px;">
+        <label>最終スコア</label>
+        <div style="display:flex; align-items:center; gap:6px;">
+          <input id="scoreSelf" type="number" min="0" style="width:48px; text-align:center;" placeholder="7">
+          <span style="color:var(--text-dim);">-</span>
+          <input id="scoreOpp" type="number" min="0" style="width:48px; text-align:center;" placeholder="3">
+        </div>
+      </div>
     </div>
 
     <div class="phase" id="atkPhase">
@@ -306,6 +315,11 @@ button.btn.primary{border-color:var(--accent-blue); color:var(--accent-blue);}
     </div>
 
     <div id="candidateBody">
+      <div class="actions" style="margin-top:0; margin-bottom:10px;">
+        <button class="btn" id="candidateExportBtn" title="サイト候補・作戦名候補をファイルに書き出して、他の人に渡せます">候補を書き出す</button>
+        <button class="btn" id="candidateImportBtn" title="他の人からもらった候補ファイルを取り込みます(今ある候補に追加されます)">候補を取り込む</button>
+        <input type="file" id="candidateImportFile" accept="application/json" style="display:none;">
+      </div>
       <div class="candidate-group">
         <div class="candidate-head"><span>サイト候補 (<span class="mapname" id="candSiteMapLabel"></span>)</span></div>
         <div class="chip-list" id="siteChipList"></div>
@@ -357,6 +371,45 @@ button.btn.primary{border-color:var(--accent-blue); color:var(--accent-blue);}
         <button class="btn" id="resetOutputBtn" title="手動での編集内容を破棄して、入力内容から自動生成し直します">自動生成に戻す</button>
       </div>
     </div>
+
+    <div class="strip-wrap">
+      <div class="title" style="margin:0 0 8px 0; cursor:pointer;" id="sheetsToggle">
+        <span>Googleスプレッドシート連携</span>
+        <small id="sheetsToggleIcon">▼ 設定</small>
+      </div>
+      <div id="sheetsBody" style="display:none;">
+        <div class="field" style="margin-bottom:8px;">
+          <label>クライアントID</label>
+          <input id="sheetsClientId" placeholder="xxxxxxxxxx.apps.googleusercontent.com">
+        </div>
+        <div class="field" style="margin-bottom:8px;">
+          <label>スプレッドシートID(またはURL)</label>
+          <input id="sheetsSpreadsheetId" placeholder="URLの /d/ と /edit の間の文字列、またはURLそのまま">
+        </div>
+        <div class="field" style="margin-bottom:8px;">
+          <label>シート(タブ)名(記録ログ)</label>
+          <input id="sheetsSheetName" placeholder="シート1" value="シート1">
+        </div>
+        <label style="display:flex; align-items:center; gap:6px; margin-bottom:8px; cursor:pointer;">
+          <input type="checkbox" id="sheetsAutoSend" style="width:auto;">
+          <span style="font-size:12px;">ラウンドを入力するたびに自動で送信する(新しく増えた行だけ追記)</span>
+        </label>
+        <label style="display:flex; align-items:center; gap:6px; margin-bottom:8px; cursor:pointer;">
+          <input type="checkbox" id="sheetsAggEnabled" style="width:auto;">
+          <span style="font-size:12px;">集計シートにも勝敗数を加算する(同じサイト・作戦名の行があれば+1、無ければ新規追加)</span>
+        </label>
+        <div class="field" id="sheetsAggNameField" style="margin-bottom:8px; display:none;">
+          <label>集計シート名</label>
+          <input id="sheetsAggSheetName" placeholder="集計" value="集計">
+        </div>
+        <div class="actions" style="margin-top:0;">
+          <button class="btn" id="sheetsSaveConfig">設定を保存</button>
+          <button class="btn" id="sheetsLoginBtn">Googleでログイン</button>
+          <button class="btn primary" id="sheetsSendBtn">スプレッドシートへ送信</button>
+        </div>
+        <div id="sheetsStatus" style="font-size:11px; color:var(--text-dim); margin-top:8px;">未ログイン</div>
+      </div>
+    </div>
   </div>
 
 </div>
@@ -398,10 +451,13 @@ if(!window.storage){
 let state = {
   map: '銀行',
   opponent: '',
+  scoreSelf: '',
+  scoreOpp: '',
   atk: [],
   def: [],
   savedId: null,
-  outputOverride: null
+  outputOverride: null,
+  sheetsSentCount: 0
 };
 
 function newRow(){ return { site: '', play: '', result: 'L' }; }
@@ -531,12 +587,15 @@ document.getElementById('mapSelect').addEventListener('change', async e => {
   renderPreview();
 });
 document.getElementById('opponent').addEventListener('input', e => { state.opponent = e.target.value; renderPreview(); });
+document.getElementById('scoreSelf').addEventListener('input', e => { state.scoreSelf = e.target.value; renderPreview(); });
+document.getElementById('scoreOpp').addEventListener('input', e => { state.scoreOpp = e.target.value; renderPreview(); });
 
 
 function buildOutput(){
   const headerParts = [];
   headerParts.push(state.map);
   if(state.opponent) headerParts.push('vs ' + state.opponent);
+  if(state.scoreSelf !== '' && state.scoreOpp !== '') headerParts.push(`${state.scoreSelf}-${state.scoreOpp}`);
   let out = headerParts.join(' ') + '\n';
 
   const formatRound = (i, r) => {
@@ -571,6 +630,7 @@ function renderPreview(){
   document.getElementById('scoreLine').innerHTML = `<span class="w">${totalW}W</span> - <span class="l">${totalL}L</span>`;
   document.getElementById('outputText').value = (state.outputOverride !== null && state.outputOverride !== undefined) ? state.outputOverride : buildOutput();
   scheduleDraftAutoSave();
+  maybeAutoSendToSheet();
 }
 
 let draftSaveTimer = null;
@@ -580,8 +640,10 @@ function scheduleDraftAutoSave(){
     try{
       const draft = {
         map: state.map, opponent: state.opponent,
+        scoreSelf: state.scoreSelf, scoreOpp: state.scoreOpp,
         atk: state.atk, def: state.def, savedId: state.savedId,
-        outputOverride: state.outputOverride
+        outputOverride: state.outputOverride,
+        sheetsSentCount: state.sheetsSentCount
       };
       await window.storage.set('r6notes:currentDraft', JSON.stringify(draft));
     }catch(e){}
@@ -872,7 +934,7 @@ async function loadSavedList(){
         const item = document.createElement('div');
         item.className = 'saved-item';
         item.innerHTML = `
-          <div><span class="name">${data.map}</span> <span class="info">${data.opponent ? 'vs '+data.opponent : ''}</span></div>
+          <div><span class="name">${data.map}</span> <span class="info">${data.opponent ? 'vs '+data.opponent : ''}${(data.scoreSelf !== undefined && data.scoreSelf !== '' && data.scoreOpp !== '') ? ' ' + data.scoreSelf + '-' + data.scoreOpp : ''}</span></div>
           <div class="load-actions">
             <button data-id="${id}" class="load-saved">読込</button>
             <button data-id="${id}" class="del-saved">削除</button>
@@ -892,6 +954,7 @@ async function saveMatch(){
   state.savedId = id;
   const data = {
     map: state.map, opponent: state.opponent,
+    scoreSelf: state.scoreSelf, scoreOpp: state.scoreOpp,
     atk: state.atk, def: state.def, outputOverride: state.outputOverride
   };
   try{
@@ -910,9 +973,11 @@ async function loadMatch(id){
     const res = await window.storage.get('r6notes:' + id);
     if(!res) return;
     const data = JSON.parse(res.value);
-    state = { map: data.map, opponent: data.opponent, atk: data.atk, def: data.def, savedId: id, outputOverride: data.outputOverride ?? null };
+    state = { map: data.map, opponent: data.opponent, scoreSelf: data.scoreSelf || '', scoreOpp: data.scoreOpp || '', atk: data.atk, def: data.def, savedId: id, outputOverride: data.outputOverride ?? null, sheetsSentCount: 0 };
     document.getElementById('mapSelect').value = state.map;
     document.getElementById('opponent').value = state.opponent || '';
+    document.getElementById('scoreSelf').value = state.scoreSelf || '';
+    document.getElementById('scoreOpp').value = state.scoreOpp || '';
     ensureMinRows();
     await loadSitesForMap(state.map);
     await ensureAllPlaysLoaded();
@@ -936,13 +1001,329 @@ async function deleteMatch(id){
 
 document.getElementById('saveBtn').addEventListener('click', saveMatch);
 document.getElementById('newBtn').addEventListener('click', async () => {
-  state = { map: '銀行', opponent: '', atk: [], def: [], savedId: null, outputOverride: null };
+  state = { map: '銀行', opponent: '', scoreSelf: '', scoreOpp: '', atk: [], def: [], savedId: null, outputOverride: null, sheetsSentCount: 0 };
   ensureMinRows();
   document.getElementById('mapSelect').value = state.map;
   document.getElementById('opponent').value = '';
+  document.getElementById('scoreSelf').value = '';
+  document.getElementById('scoreOpp').value = '';
   await loadSitesForMap(state.map);
   renderPlayCandidateSiteOptions();
   renderRows('atk'); renderRows('def'); renderPreview();
+});
+
+// ---- Google Sheets integration ----
+document.getElementById('sheetsToggle').addEventListener('click', () => {
+  const body = document.getElementById('sheetsBody');
+  const collapsed = body.style.display !== 'none';
+  body.style.display = collapsed ? 'none' : '';
+  document.getElementById('sheetsToggleIcon').textContent = collapsed ? '▼ 設定' : '▲ 閉じる';
+});
+
+let sheetsAccessToken = null;
+let sheetsTokenClient = null;
+
+function extractSpreadsheetId(raw){
+  const s = (raw || '').trim();
+  const m = s.match(/\/d\/([a-zA-Z0-9-_]+)/);
+  return m ? m[1] : s;
+}
+
+async function loadSheetsConfig(){
+  try{
+    const r = await window.storage.get('r6notes:sheetsConfig');
+    if(r){
+      const cfg = JSON.parse(r.value);
+      document.getElementById('sheetsClientId').value = cfg.clientId || '';
+      document.getElementById('sheetsSpreadsheetId').value = cfg.spreadsheetId || '';
+      document.getElementById('sheetsSheetName').value = cfg.sheetName || 'シート1';
+      document.getElementById('sheetsAutoSend').checked = !!cfg.autoSend;
+      document.getElementById('sheetsAggEnabled').checked = !!cfg.aggEnabled;
+      document.getElementById('sheetsAggSheetName').value = cfg.aggSheetName || '集計';
+      document.getElementById('sheetsAggNameField').style.display = cfg.aggEnabled ? '' : 'none';
+    }
+  }catch(e){}
+}
+
+async function persistSheetsConfig(){
+  const cfg = {
+    clientId: document.getElementById('sheetsClientId').value.trim(),
+    spreadsheetId: extractSpreadsheetId(document.getElementById('sheetsSpreadsheetId').value),
+    sheetName: document.getElementById('sheetsSheetName').value.trim() || 'シート1',
+    autoSend: document.getElementById('sheetsAutoSend').checked,
+    aggEnabled: document.getElementById('sheetsAggEnabled').checked,
+    aggSheetName: document.getElementById('sheetsAggSheetName').value.trim() || '集計'
+  };
+  document.getElementById('sheetsSpreadsheetId').value = cfg.spreadsheetId;
+  try{ await window.storage.set('r6notes:sheetsConfig', JSON.stringify(cfg)); }catch(e){}
+  return cfg;
+}
+
+document.getElementById('sheetsSaveConfig').addEventListener('click', async () => {
+  await persistSheetsConfig();
+  document.getElementById('sheetsStatus').textContent = '設定を保存しました';
+});
+document.getElementById('sheetsAutoSend').addEventListener('change', persistSheetsConfig);
+document.getElementById('sheetsAggEnabled').addEventListener('change', () => {
+  document.getElementById('sheetsAggNameField').style.display = document.getElementById('sheetsAggEnabled').checked ? '' : 'none';
+  persistSheetsConfig();
+});
+document.getElementById('sheetsAggSheetName').addEventListener('change', persistSheetsConfig);
+
+
+document.getElementById('sheetsLoginBtn').addEventListener('click', () => {
+  const clientId = document.getElementById('sheetsClientId').value.trim();
+  const statusEl = document.getElementById('sheetsStatus');
+  if(!clientId){ statusEl.textContent = 'クライアントIDを入力してください'; return; }
+  if(!window.google || !window.google.accounts || !window.google.accounts.oauth2){
+    statusEl.textContent = 'Google連携ライブラリを読み込めていません(file://で開いていないか、通信をブロックされていないか確認してください)';
+    return;
+  }
+  try{
+    sheetsTokenClient = google.accounts.oauth2.initTokenClient({
+      client_id: clientId,
+      scope: 'https://www.googleapis.com/auth/spreadsheets',
+      callback: (resp) => {
+        if(resp.error){
+          statusEl.textContent = 'ログイン失敗: ' + resp.error;
+          return;
+        }
+        sheetsAccessToken = resp.access_token;
+        statusEl.textContent = 'ログイン済み(このセッションのみ有効)';
+        maybeAutoSendToSheet();
+      }
+    });
+    sheetsTokenClient.requestAccessToken();
+  }catch(e){
+    statusEl.textContent = 'ログイン処理でエラーが発生しました: ' + e.message;
+  }
+});
+
+function buildSheetRows(){
+  const rows = [];
+  const today = new Date().toISOString().slice(0,10);
+  const addRounds = (phaseLabel, list) => {
+    list.forEach((r, i) => {
+      rows.push([today, state.map, state.opponent || '', (state.scoreSelf !== '' && state.scoreOpp !== '') ? `${state.scoreSelf}-${state.scoreOpp}` : '', phaseLabel, i+1, r.site || '', r.play || '', r.result]);
+    });
+  };
+  addRounds('攻撃', state.atk);
+  addRounds('防衛', state.def);
+  return rows;
+}
+
+// Sends only the rows beyond what's already been sent for this match (state.sheetsSentCount),
+// so manual clicks and auto-send never duplicate rows in the sheet.
+async function sendNewRowsToSheet(){
+  const statusEl = document.getElementById('sheetsStatus');
+  const spreadsheetId = extractSpreadsheetId(document.getElementById('sheetsSpreadsheetId').value);
+  const sheetName = document.getElementById('sheetsSheetName').value.trim() || 'シート1';
+  if(!spreadsheetId){ statusEl.textContent = 'スプレッドシートIDを入力してください'; return false; }
+  if(!sheetsAccessToken){ statusEl.textContent = '先に「Googleでログイン」してください'; return false; }
+  const rows = buildSheetRows();
+  const newRows = rows.slice(state.sheetsSentCount || 0);
+  if(newRows.length === 0){ statusEl.textContent = '新しく追加された行はありません'; return false; }
+  statusEl.textContent = '送信中...';
+  try{
+    const range = encodeURIComponent(sheetName + '!A1');
+    const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${range}:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`;
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Authorization': 'Bearer ' + sheetsAccessToken,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ values: newRows })
+    });
+    if(!res.ok){
+      const errText = await res.text();
+      statusEl.textContent = '送信失敗 (' + res.status + '): ' + errText.slice(0,150);
+      return false;
+    }
+    state.sheetsSentCount = rows.length;
+    scheduleDraftAutoSave();
+    statusEl.textContent = `送信しました(新規${newRows.length}行, 累計${rows.length}行, ${new Date().toLocaleTimeString()})`;
+    flashStatus('スプレッドシートに送信しました');
+
+    if(document.getElementById('sheetsAggEnabled').checked){
+      const aggResult = await syncAggregateSheet(newRows, spreadsheetId);
+      if(aggResult.ok){
+        statusEl.textContent += ` / 集計も更新(既存${aggResult.updated}件+1, 新規${aggResult.added}件)`;
+      }else{
+        statusEl.textContent += ` / 集計の更新に失敗: ${aggResult.error}`;
+      }
+    }
+    return true;
+  }catch(e){
+    statusEl.textContent = '送信エラー: ' + e.message;
+    return false;
+  }
+}
+
+// Reads the aggregate sheet, adds +1 to the matching (map, phase, site, play) row's W/L count,
+// or appends a brand-new row starting at 1 when no matching combination exists yet.
+async function syncAggregateSheet(logRows, spreadsheetId){
+  const aggSheetName = document.getElementById('sheetsAggSheetName').value.trim() || '集計';
+  const authHeaders = { 'Authorization': 'Bearer ' + sheetsAccessToken };
+  const keyOf = (map, phase, site, play) => [map, phase, site, play].join('|');
+
+  // 1) fetch existing aggregate rows (map, phase, site, play, W, L) starting at row 2
+  const getUrl = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(aggSheetName + '!A2:F100000')}`;
+  let getRes = await fetch(getUrl, { headers: authHeaders });
+
+  if(!getRes.ok && getRes.status === 400){
+    // aggregate tab probably doesn't exist yet — create it with a header row, then retry
+    try{
+      await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}:batchUpdate`, {
+        method: 'POST',
+        headers: { ...authHeaders, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ requests: [{ addSheet: { properties: { title: aggSheetName } } }] })
+      });
+      await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(aggSheetName + '!A1:F1')}?valueInputOption=USER_ENTERED`, {
+        method: 'PUT',
+        headers: { ...authHeaders, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ values: [['マップ','フェーズ','サイト','作戦名','W','L']] })
+      });
+      getRes = await fetch(getUrl, { headers: authHeaders });
+    }catch(e){
+      return { ok: false, error: 'シート作成に失敗: ' + e.message };
+    }
+  }
+  if(!getRes.ok){
+    return { ok: false, error: '読み取り失敗(' + getRes.status + ')' };
+  }
+
+  const getData = await getRes.json();
+  const existing = getData.values || [];
+  const byKey = {}; // key -> { row: sheetRowNumber, w, l }
+  existing.forEach((row, i) => {
+    const [map, phase, site, play, w, l] = row;
+    byKey[keyOf(map, phase, site, play)] = { row: i + 2, w: Number(w) || 0, l: Number(l) || 0 };
+  });
+
+  const changedRows = new Set();
+  const newEntries = []; // in-order list of {key, map, phase, site, play, w, l}
+  const newEntryIndex = {}; // key -> index into newEntries
+
+  logRows.forEach(r => {
+    const map = r[1], phase = r[4], site = r[6], play = r[7], result = r[8];
+    const key = keyOf(map, phase, site, play);
+    if(byKey[key]){
+      if(result === 'W') byKey[key].w++; else byKey[key].l++;
+      changedRows.add(key);
+    }else if(newEntryIndex[key] !== undefined){
+      const entry = newEntries[newEntryIndex[key]];
+      if(result === 'W') entry.w++; else entry.l++;
+    }else{
+      const entry = { map, phase, site, play, w: result === 'W' ? 1 : 0, l: result === 'L' ? 1 : 0 };
+      newEntryIndex[key] = newEntries.length;
+      newEntries.push(entry);
+    }
+  });
+
+  try{
+    if(changedRows.size > 0){
+      const data = [...changedRows].map(key => ({
+        range: `${aggSheetName}!E${byKey[key].row}:F${byKey[key].row}`,
+        values: [[byKey[key].w, byKey[key].l]]
+      }));
+      await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values:batchUpdate`, {
+        method: 'POST',
+        headers: { ...authHeaders, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ valueInputOption: 'USER_ENTERED', data })
+      });
+    }
+    if(newEntries.length > 0){
+      const values = newEntries.map(e => [e.map, e.phase, e.site, e.play, e.w, e.l]);
+      await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(aggSheetName + '!A1')}:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`, {
+        method: 'POST',
+        headers: { ...authHeaders, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ values })
+      });
+    }
+    return { ok: true, updated: changedRows.size, added: newEntries.length };
+  }catch(e){
+    return { ok: false, error: e.message };
+  }
+}
+
+document.getElementById('sheetsSendBtn').addEventListener('click', sendNewRowsToSheet);
+
+// auto-send: fires a short while after a round is filled in / added, if the checkbox is on
+let sheetsAutoSendTimer = null;
+function maybeAutoSendToSheet(){
+  if(!document.getElementById('sheetsAutoSend').checked) return;
+  if(!sheetsAccessToken) return;
+  if(sheetsAutoSendTimer) clearTimeout(sheetsAutoSendTimer);
+  sheetsAutoSendTimer = setTimeout(() => { sendNewRowsToSheet(); }, 1200);
+}
+
+// ---- share candidate data (site names / play names) with teammates ----
+async function exportCandidates(){
+  const maps = Object.keys(MAP_SITE_SEEDS).concat(['その他']);
+  for(const m of maps) await loadSitesForMap(m);
+  for(const m of maps){
+    const sites = customValues.sitesByMap[m] || [];
+    for(const s of sites){
+      await ensurePlaysLoaded(playKey('atk', s));
+      await ensurePlaysLoaded(playKey('def', s));
+    }
+  }
+  const payload = {
+    type: 'r6notes-candidates',
+    exportedAt: new Date().toISOString(),
+    sitesByMap: customValues.sitesByMap,
+    playsBySite: customValues.playsBySite
+  };
+  const blob = new Blob([JSON.stringify(payload, null, 2)], {type:'application/json'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = 'r6notes-候補.json';
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  flashStatus('候補を書き出しました');
+}
+
+async function importCandidatesFromFile(file){
+  let data;
+  try{
+    data = JSON.parse(await file.text());
+  }catch(e){
+    flashStatus('ファイルを読み込めませんでした');
+    return;
+  }
+  let addedSites = 0, addedPlays = 0;
+  for(const map in (data.sitesByMap || {})){
+    const incoming = data.sitesByMap[map] || [];
+    if(!customValues.sitesByMap[map]) await loadSitesForMap(map);
+    const merged = customValues.sitesByMap[map].slice();
+    incoming.forEach(v => { if(v && !merged.includes(v)){ merged.push(v); addedSites++; } });
+    customValues.sitesByMap[map] = merged;
+    try{ await window.storage.set('r6notes:customSites:' + map, JSON.stringify(merged)); }catch(e){}
+  }
+  for(const key in (data.playsBySite || {})){
+    const incoming = data.playsBySite[key] || [];
+    const merged = (customValues.playsBySite[key] || []).slice();
+    incoming.forEach(v => { if(v && !merged.includes(v)){ merged.push(v); addedPlays++; } });
+    customValues.playsBySite[key] = merged;
+    try{ await window.storage.set('r6notes:customPlays:' + key, JSON.stringify(merged)); }catch(e){}
+  }
+  renderDatalist('sites');
+  renderChips('sites');
+  renderPlayCandidateSiteOptions();
+  renderRows('atk');
+  renderRows('def');
+  flashStatus(`取り込みました(サイト+${addedSites}件, 作戦名+${addedPlays}件)`);
+}
+
+document.getElementById('candidateExportBtn').addEventListener('click', exportCandidates);
+document.getElementById('candidateImportBtn').addEventListener('click', () => {
+  document.getElementById('candidateImportFile').click();
+});
+document.getElementById('candidateImportFile').addEventListener('change', e => {
+  const file = e.target.files[0];
+  if(file) importCandidatesFromFile(file);
+  e.target.value = '';
 });
 
 // init
@@ -964,15 +1345,20 @@ async function initApp(){
     state = {
       map: draft.map || '銀行',
       opponent: draft.opponent || '',
+      scoreSelf: draft.scoreSelf || '',
+      scoreOpp: draft.scoreOpp || '',
       atk: (draft.atk && draft.atk.length) ? draft.atk : [],
       def: (draft.def && draft.def.length) ? draft.def : [],
       savedId: draft.savedId || null,
-      outputOverride: draft.outputOverride ?? null
+      outputOverride: draft.outputOverride ?? null,
+      sheetsSentCount: draft.sheetsSentCount || 0
     };
   }
   ensureMinRows();
   document.getElementById('mapSelect').value = state.map;
   document.getElementById('opponent').value = state.opponent;
+  document.getElementById('scoreSelf').value = state.scoreSelf;
+  document.getElementById('scoreOpp').value = state.scoreOpp;
   await loadCustomValues();
   await ensureAllPlaysLoaded();
   renderPlayCandidateSiteOptions();
@@ -980,6 +1366,7 @@ async function initApp(){
   renderRows('def');
   renderPreview();
   loadSavedList();
+  loadSheetsConfig();
   try{
     const r = await window.storage.get('r6notes:uiCandidateCollapsed');
     applyCandidateCollapsed(r ? JSON.parse(r.value) : false);
